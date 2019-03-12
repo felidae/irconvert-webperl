@@ -1,0 +1,375 @@
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    textarea {
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <textarea id="input" rows="10">
+  </textarea>
+  <select id="intype">
+    <option>pronto</option>
+    <option>rm</option>
+    <option>irkit</option>
+    <option>remo</option>
+    <option>kurors</option>
+    <option>generic</option>
+  </select>
+  <select id="outtype">
+    <option>pronto</option>
+    <option>rm</option>
+    <option>irkit</option>
+    <option>remo</option>
+    <option>kurors</option>
+    <option>generic</option>
+  </select>
+  <button id="click">
+  convert
+  </button>
+  <textarea id="output" rows="10">
+  </textarea>
+  <!-- https://github.com/haukex/webperl -->
+  <script src="webperl/webperl.js"></script>
+  <script type="text/perl">
+    #! /usr/bin/perl
+    #  Original: http://shrkn65.nobody.jp/remocon/convert.html
+    #
+    #  Usage: irconvert [options ...] [input_file ...]
+    #    options:
+    #      --in FORMAT
+    #      --out FORMAT
+    #      --repeat num
+    #    FORMAT:
+    #      pronto, rm, irkit, kurors, generic
+
+    #---------------------------------------------------------------- 定数値
+    %input_functions = (
+        'pronto' => \&pronto2ic, 'hex' => \&pronto2ic,
+        'rm' => \&rm2ic, 'mame' => \&rm2ic, 'kuromame' => \&rm2ic,
+        'irkit' => \&irkit2ic, 'remo' => \&remo2ic,
+        'kurors' => \&kurors2ic, 'pcoprs1' => \&kurors2ic,
+        'generic' => \&gen2ic, 'raw' => \&gen2ic,
+    );
+    %output_functions = (
+        'pronto' => \&ic2pronto, 'hex' => \&ic2pronto,
+        'rm' => \&ic2rm, 'mame' => \&ic2rm, 'kuromame' => \&ic2rm,
+        'irkit' => \&ic2irkit, 'remo' => \&ic2remo,
+        'kurors' => \&ic2kurors, 'pcoprs1' => \&ic2kurors,
+        'generic' => \&ic2gen, 'raw' => \&ic2gen,
+    );
+
+    #-----------------------------------------------------------デフォルト値
+    $input_function = $input_functions{'generic'};
+    $output_function = $output_functions{'generic'};
+    $repeat_user_specified = 0;
+
+    #---------------------------------------------- コマンドライン引数の解析
+    #push (@ARGV, $eol = "--##END_OF_ARGV##--");
+    #while (@ARGV > 0 && ($argv = shift (@ARGV)) ne $eol) {
+    #    if ($argv =~ /^--(.*)/) {
+    #        $option = $1;
+    #        if ($option eq 'in') {
+    #            $format = shift (@ARGV);
+    #            if (! defined ($input_functions{$format})) {
+    #                print STDERR "$0: unknown input format '$format'\n";
+    #                exit 1;
+    #            }
+    #            $input_function = $input_functions{$format};
+    #        } elsif ($option eq 'out') {
+    #            $format = shift (@ARGV);
+    #            if (! defined ($output_functions{$format})) {
+    #                print STDERR "$0: unknown output format '$format'\n";
+    #                exit 1;
+    #            }
+    #            $output_function = $output_functions{$format};
+    #        } elsif ($option eq 'repeat') {
+    #            $repeat_user_specified = shift (@ARGV);
+    #        } else {
+    #            print STDERR "$0: unknown option '--$option'\n";
+    #            exit 1;
+    #        }
+    #    } else {
+    #        push (@ARGV, $argv);
+    #    }
+    #}
+    
+    ##---------------------------------------------------------- メインループ
+    #while (<>) {
+    #    ($freq, $repeat, @data) = &$input_function ($_);
+    #    if ($freq < 0) {
+    #        print "$0: $.: $repeat\n";
+    #    } else {
+    #        $repeat = $repeat_user_specified if ($repeat_user_specified > 0);
+    #        $code = &$output_function ($freq, $repeat, @data);
+    #        print $code, "\n";
+    #    }
+    #}
+    #exit 0;
+
+    my ($input) = js("document")->getElementById("input");
+    my ($output) = js("document")->getElementById("output");
+    js("document")->getElementById("click")->addEventListener("click", sub {
+      $input_function = $input_functions{js("document")->getElementById("intype")->{value}};
+      $output_function = $output_functions{js("document")->getElementById("outtype")->{value}};
+      js("console")->log("start");
+      ($freq, $repeat, @data) = &$input_function ($input->{value});
+      if ($freq < 0) {
+        $output->{value} = ($repeat);
+      } else {
+        $repeat = $repeat_user_specified if ($repeat_user_specified > 0);
+        $code = &$output_function ($freq, $repeat, @data);
+        $output->{value} = ($code);
+      }
+    });
+
+    #------------------------------------------ フォーマット変換サブルーチン
+    sub pronto2ic {         # pronto hex -> 内部表現
+        my ($str) = shift (@_);
+
+        my (@run) = ($str =~ /\b([0-9a-f]{4})\b/isg);
+        return (-1, "pronto2ic: invalid form") if (shift (@run) != 0);
+        @run = map { $_ = hex ($_); } @run;
+
+        my ($freq) = 1000 / (shift (@run) * .241246);
+        my ($length) = shift (@run) + shift (@run);
+        return (-1, "pronto2ic: too short") if (scalar (@run) != $length * 2);
+
+        @run = map { $_ = $_ / $freq * 1000; } @run;
+        return ($freq, 1, @run);
+    }
+
+    sub ic2pronto {         # 内部表現 -> pronto hex
+        my ($freq, $repeat, @run) = @_;
+        push (@run, 40000) if (@run % 2 != 0);
+
+        $freq = int (1000 / $freq / .241246 + 0.5);
+        my ($clock) = 1 / ($freq * .241246);
+        my ($r) = 0.5;
+
+        my (@run1) = ();
+        while ($repeat-- > 0) {
+            foreach (@run) {
+                my ($t) = $_ * $clock + $r;
+                push (@run1, int ($t));
+                $r = $t - int ($t);
+            }
+        }
+
+        unshift (@run1, 0, $freq, 0, scalar (@run1) / 2);
+        @run1 = map { sprintf ("%04x", $_); } @run1;
+        my ($code) = join (" ", @run1);
+
+        return ($code);
+    }
+
+    sub rm2ic {             # 黒豆 -> 内部表現
+        my ($str) = shift (@_);
+
+        $str =~ s/[^0-9a-f]//isg;
+        my (@run) = map (hex, ($str =~ /(..)/isg));
+        return (-1, "rm2ic: invalid form") if (shift (@run) != 0x26);
+
+        my ($repeat) = shift (@run) + 1;
+        my ($length) = shift (@run) + shift (@run) * 256;
+        return (-1, "rm2ic: too short") if (@run < $length);
+        @run = @run[0..$length - 1];
+
+        my (@run1) = ();
+        while (@run > 0) {
+            if (($_ = shift (@run)) == 0) {
+                $_ = shift (@run) * 256 + shift (@run);
+            }
+            push (@run1, $_ * 1000 / 32.768);
+        }
+        return (38, $repeat, @run1);
+    }
+
+    sub ic2rm {             # 内部表現 -> 黒豆
+        my ($freq, $repeat, @run) = @_;
+        push (@run, 40000) if (@run % 2 != 0);
+
+        my ($clock) = 32768 / 1000000;
+        my ($r) = 0.5;
+        my (@run1) = ();
+        while ($repeat-- > 0) {
+            foreach (@run) {
+                my ($t) = $_ * $clock + $r;
+                push (@run1, int ($t));
+                $r = $t - int ($t);
+            }
+        }
+        $run1[$#run1] = 0x0d05;
+
+        @run1 = map { sprintf ($_ >= 256 ? "00%04x" : "%02x", $_); } @run1;
+        my ($code) = join ("", @run1);
+        my ($len) = length ($code) / 2;
+        $code = sprintf ("2600%02x%02x", $len % 256, $len / 256) . $code;
+
+        return ($code);
+    }
+
+    sub irkit2ic {          # IRKit -> 内部表現
+        my ($str) = shift (@_);
+
+        return (-1, "irkit2ic: invalid form") if ($str !~ /"format":"raw"/);
+        return (-1, "irkit2ic: invalid form") if ($str !~ /"freq":(\d+)/);
+        my ($freq) = $1;
+        return (-1, "irkit2ic: invalid form") if ($str !~ /"data":\[(.*?)\]/);
+        my (@run) = split (",", $1);
+
+        my (@run1) = ();
+        while (@run > 0) {
+            my ($t) = shift (@run);
+            if ($t == 0) {
+                $t = shift (@run);
+                @run1[$#run1] += $t / 2;
+            } else {
+                push (@run1, $t / 2);
+            }
+        }
+
+        return ($freq, 1, @run1);
+    }
+
+    sub ic2irkit {          # 内部表現 -> IRKit
+        my ($freq, $repeat, @run) = @_;
+        push (@run, 40000) if (@run % 2 != 0);
+
+        $freq = ($freq > 39) ? 40 : 38;
+        my ($clock) = 2;
+        my ($r) = 0.5;
+
+        my ($code)  = qq({);
+        $code .= qq("format":"raw",);
+        $code .= qq("freq":$freq,);
+        $code .= qq("data":[);
+
+        my ($delim) = "";
+        while ($repeat-- > 0) {
+            my (@run1) = @run;
+            while (@run1) {
+                my ($t) = shift (@run1) * $clock + $r;
+                while ($t > 65535) {
+                    $code .= $delim . "65535,0";
+                    $delim = ",";
+                    $t -= 65535;
+                }
+                $code .= $delim . sprintf ("%d", int ($t));
+                $delim = ",";
+                $r = $t - int ($t);
+            }
+        }
+        $code .= "]}";
+
+        return ($code);
+    }
+
+    sub remo2ic {          # Remo -> 内部表現
+        my ($str) = shift (@_);
+
+        return (-1, "irkit2ic: invalid form") if ($str !~ /"format":"us"/);
+        return (-1, "irkit2ic: invalid form") if ($str !~ /"freq":(\d+)/);
+        my ($freq) = $1;
+        return (-1, "irkit2ic: invalid form") if ($str !~ /"data":\[(.*?)\]/);
+        my (@run) = split (",", $1);
+
+        my (@run1) = ();
+        while (@run > 0) {
+            my ($t) = shift (@run);
+            if ($t == 0) {
+                $t = shift (@run);
+                @run1[$#run1] += $t;
+            } else {
+                push (@run1, $t);
+            }
+        }
+
+        return ($freq, 1, @run1);
+    }
+
+    sub ic2remo {          # 内部表現 -> Remo
+        my ($freq, $repeat, @run) = @_;
+        push (@run, 40000) if (@run % 2 != 0);
+
+        $freq = ($freq > 39) ? 40 : 38;
+        my ($clock) = 1;
+        my ($r) = 0.5;
+
+        my ($code)  = qq({);
+        $code .= qq("format":"us",);
+        $code .= qq("freq":$freq,);
+        $code .= qq("data":[);
+
+        my ($delim) = "";
+        while ($repeat-- > 0) {
+            my (@run1) = @run;
+            while (@run1) {
+                my ($t) = shift (@run1) * $clock + $r;
+                while ($t > 65535) {
+                    $code .= $delim . "65535,0";
+                    $delim = ",";
+                    $t -= 65535;
+                }
+                $code .= $delim . sprintf ("%d", int ($t));
+                $delim = ",";
+                $r = $t - int ($t);
+            }
+        }
+        $code .= "]}";
+
+        return ($code);
+    }
+
+    sub kurors2ic { # KURO-RS -> 内部表現
+        my ($str) = shift (@_);
+
+        $str =~ s/[^0-9a-f]//isg;
+        return (-1, "kurors2ic: invalid form") if (length ($str) != 480);
+
+        my ($data) = pack ("H*", $str);
+        $data = unpack ("b1920", $data);
+        my (@run) = map (length, $data =~ /(0+|1+)/g);
+        @run = map { $_ *= 100; } @run;
+
+        return (38, 1, @run)
+    }
+
+    sub ic2kurors { # 内部表現 -> KURO-RS
+        my ($freq, $repeat, @run) = @_;
+        push (@run, 40000) if (@run % 2 != 0);
+
+        my ($clock) = 0.01;
+        my ($r) = 0.5;
+        my ($code) = "";
+        my ($phase) = 1;
+        while ($repeat-- > 0) {
+            foreach (@run) {
+                my ($t) = $_ * $clock + $r;
+                $code .= $phase x $t;
+                $r = $t - int ($t);
+                $phase = 1 - $phase;
+            }
+        }
+        $code = substr ($code . "0" x 1920, 0, 1920);
+        $code = unpack ("H*", pack ("b1920", $code));
+        return ($code);
+    }
+
+    sub gen2ic {    # generic -> 内部表現
+        my (@run) = split (" ", shift (@_));
+
+        if ($run[0] <= 0) {
+            return (-1, "gen2ic: invalid form");
+        }
+        return (@run);
+    }
+
+    sub ic2gen {    # 内部表現 -> generic
+        return (join (" ", @_));
+    }
+  </script>
+</body>
+</html>
