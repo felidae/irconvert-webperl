@@ -1,6 +1,8 @@
+<!doctype html>
 <html>
 <head>
   <meta charset="UTF-8">
+  <title>リモコン信号定義データの相互変換</title>
   <style>
     textarea {
       width: 100%;
@@ -8,29 +10,30 @@
   </style>
 </head>
 <body>
-  <textarea id="input" rows="10">
-  </textarea>
-  <select id="intype">
-    <option>pronto</option>
-    <option>rm</option>
-    <option>irkit</option>
-    <option>remo</option>
-    <option>kurors</option>
-    <option>generic</option>
-  </select>
-  <select id="outtype">
-    <option>pronto</option>
-    <option>rm</option>
-    <option>irkit</option>
-    <option>remo</option>
-    <option>kurors</option>
-    <option>generic</option>
-  </select>
-  <button id="click">
-  convert
-  </button>
-  <textarea id="output" rows="10">
-  </textarea>
+  <h1>リモコン信号定義データの相互変換</h1>
+  <textarea id="input" rows="10" placeholder="入力"></textarea>
+  <div>
+    <select id="intype">
+      <option>pronto</option>
+      <option>rm</option>
+      <option>irkit</option>
+      <option>remo</option>
+      <option>kurors</option>
+      <option>generic</option>
+    </select>
+    形式から
+    <select id="outtype">
+      <option>pronto</option>
+      <option>rm</option>
+      <option>irkit</option>
+      <option>remo</option>
+      <option>kurors</option>
+      <option>generic</option>
+    </select>
+    形式へ
+    <button id="click">変換</button>
+  </div>
+  <textarea id="output" rows="10" placeholder="出力"></textarea>
   <!-- https://github.com/haukex/webperl -->
   <script src="webperl/webperl.js"></script>
   <script type="text/perl">
@@ -114,7 +117,6 @@
     js("document")->getElementById("click")->addEventListener("click", sub {
       $input_function = $input_functions{js("document")->getElementById("intype")->{value}};
       $output_function = $output_functions{js("document")->getElementById("outtype")->{value}};
-      js("console")->log("start");
       ($freq, $repeat, @data) = &$input_function ($input->{value});
       if ($freq < 0) {
         $output->{value} = ($repeat);
@@ -370,6 +372,7 @@
     sub ic2gen {    # 内部表現 -> generic
         return (join (" ", @_));
     }
+
   </script>
 </body>
 </html>
